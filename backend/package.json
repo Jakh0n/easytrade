@@ -6,14 +6,17 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test:binance": "tsx src/scripts/test-binance.ts",
+    "test:indicators": "tsx src/scripts/test-indicators.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
     "axios": "^1.18.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "openai": "^6.45.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

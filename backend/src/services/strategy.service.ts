@@ -47,6 +47,13 @@ export interface VerdictResult {
   stopLoss: number;
   takeProfit: number;
   strategy: StrategyDetection;
+  confluence?: number;
+  htfTrend?: Trend;
+  htfInterval?: string;
+  mtfNote?: string;
+  btcTrend?: Trend;
+  btcAligned?: boolean;
+  btcNote?: string;
 }
 
 export interface StrategyInput {

@@ -126,6 +126,13 @@ export interface VerdictInfo {
   invalidation: number;
   stopLoss: number;
   takeProfit: number;
+  confluence?: number;
+  htfTrend?: Trend;
+  htfInterval?: string;
+  mtfNote?: string;
+  btcTrend?: Trend;
+  btcAligned?: boolean;
+  btcNote?: string;
 }
 
 export interface ScreenerCoinResult {
@@ -140,6 +147,9 @@ export interface ScreenerCoinResult {
   rrIdeal: number;
   rsi: number;
   strategy: StrategyInfo;
+  volumeStatus: VolumeStatus;
+  quoteVolume: number;
+  opportunityScore: number;
 }
 
 export interface ScreenerResponse {
@@ -148,4 +158,67 @@ export interface ScreenerResponse {
   marketType: MarketType;
   updatedAt: string;
   coins: ScreenerCoinResult[];
+}
+
+export interface EquityPoint {
+  date: string;
+  cumulativePnl: number;
+}
+
+export interface JournalStats {
+  totalTrades: number;
+  openTrades: number;
+  closedTrades: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  avgR: number;
+  expectancy: number;
+  totalPnl: number;
+  equityCurve: EquityPoint[];
+}
+
+export interface UserSettings {
+  capital: number;
+  riskPercent: number;
+  marketType: MarketType;
+  theme: "light" | "dark" | "system";
+}
+
+export interface PublicUser {
+  id: string;
+  email: string;
+  name: string;
+  settings: UserSettings;
+}
+
+export interface AuthResponse {
+  token: string;
+  user: PublicUser;
+}
+
+export interface BacktestStrategyStat {
+  strategy: StrategyType;
+  label: string;
+  trades: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  avgR: number;
+  expectancy: number;
+}
+
+export interface BacktestSummary {
+  symbol: string;
+  interval: string;
+  marketType: MarketType;
+  candlesAnalyzed: number;
+  trades: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  avgR: number;
+  expectancy: number;
+  byStrategy: BacktestStrategyStat[];
+  generatedAt: string;
 }

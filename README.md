@@ -1,72 +1,163 @@
-# Trade — AI-Powered Crypto Spot Trading Analysis
+# EasyTrade AI — Kripto Trading Assistant
 
-Monorepo loyiha: kripto spot trading uchun AI-powered tahlil web-app MVP.
+Professional traderlar uchun mo'ljallangan kripto trading yordamchisi: ko'p
+timeframe'li signal (confluence), backtest, watchlist, savdo jurnali,
+ogohlantirishlar va grounded AI chat.
 
-## Struktura
+## Xususiyatlar
+
+- **Signal engine** — EMA/RSI/ATR, support/resistance (swing-based), 4 strategiya
+  (Trend Pullback, Breakout + Retest, EMA Crossover, RSI Divergence), side-aware
+  SL/TP va R:R, blended confidence.
+- **Multi-timeframe confluence** — yuqori timeframe trendi filtr sifatida; HTF
+  qarama-qarshi bo'lsa `enter` → `wait` ga tushiriladi.
+- **Backtest** — 1000 tagacha shamda strategiyalarni qayta o'ynatib win rate,
+  o'rtacha R va expectancy hisoblaydi (Mongo'da keshlanadi).
+- **Auth** — JWT + bcrypt, per-user sozlamalar.
+- **Watchlist / Savdo jurnali / Ogohlantirishlar** — MongoDB'da saqlanadi;
+  jurnal P&L, R-multiple, win rate, expectancy va equity egri chizig'i.
+- **Ogohlantirishlar** — `node-cron` har daqiqada narx / kirish zonasi / signal
+  ogohlantirishlarini baholaydi; brauzer bildirishnomalari.
+- **UI** — Next.js App Router, sidebar shell, dark mode, jonli narx (Binance
+  WebSocket), boyitilgan grafik (EMA, volume, Fibonacci, entry/SL/TP).
+- **AI** — statik izoh + streaming (SSE) suhbat yordamchisi (joriy setupga
+  asoslangan). OpenAI ixtiyoriy — kalitsiz ham signallar ishlaydi.
+
+## Texnologiyalar
+
+- **Backend** — Node.js, Express 5, TypeScript (strict), Mongoose, zod, JWT,
+  bcryptjs, node-cron, OpenAI SDK.
+- **Frontend** — Next.js 16 (App Router), React 19, TypeScript, Tailwind v4,
+  shadcn/base-ui, TanStack Query, Zustand, next-themes, lightweight-charts,
+  recharts, sonner.
+
+## Arxitektura
+
+```mermaid
+flowchart TD
+  subgraph FE [Next.js Frontend]
+    Shell[App shell + sidebar]
+    Query[TanStack Query]
+    Store[Zustand auth/theme]
+    Shell --> Dashboard & Screener & Analyze & Watchlist & Journal & Alerts & Settings
+  end
+  subgraph BE [Express + TS]
+    Auth[auth JWT]
+    AnalyzeC[analyze + MTF]
+    ScreenerC[screener]
+    Backtest[backtest]
+    WL[watchlist]
+    Jrnl[journal]
+    AlertC[alerts + cron]
+    Chat[AI chat SSE]
+  end
+  Query -->|REST + Bearer JWT| BE
+  Store --> Query
+  BE --> Mongo[(MongoDB)]
+  AnalyzeC --> OpenAI
+  Chat --> OpenAI
+  FE -->|WebSocket jonli narx| Binance
+  BE -->|klines| Binance
+```
+
+### Backend tuzilmasi
 
 ```
-trade/
-├── backend/    # Node.js + Express API
-├── frontend/   # Next.js web-app
-└── README.md
+backend/src/
+  config/       env, db, scheduler (cron)
+  middleware/   auth, validate (zod), error
+  models/       User, Watchlist, Trade, Alert, BacktestResult
+  services/     analysis, strategy, indicators, risk, mtf, backtest,
+                screener, binance, openai, auth, watchlist, journal, alert
+  controllers/  har bir resurs uchun ingichka handlerlar
+  routes/       Express routerlar (/api/...)
+  validators/   zod sxemalari
+  utils/        AppError, asyncHandler, token
+  __tests__/    Jest testlari
 ```
 
-## Ishga tushirish
+### Frontend tuzilmasi
 
-### Backend
+```
+frontend/
+  app/                 layout, providers, login/register, (app)/* himoyalangan sahifalar
+  components/          layout, auth, analyze, screener, watchlist, journal, alerts,
+                       dashboard, settings, common, ui (shadcn)
+  hooks/               React Query hooklari (market, watchlist, journal, alerts)
+  lib/api/             tiplangan API klient (client, auth, market, watchlist,
+                       journal, alerts, chat)
+  lib/store/           Zustand auth store
+  lib/                 format, setup, indicators, binance, positionBoxOverlay
+```
+
+## O'rnatish
+
+### 1. Backend
 
 ```bash
 cd backend
-cp .env.example .env   # ANTHROPIC_API_KEY ni to'ldiring
 npm install
+cp .env.example .env   # qiymatlarni to'ldiring (MONGODB_URI, JWT_SECRET, ...)
 npm run dev            # http://localhost:4000
 ```
 
-Health check: `GET http://localhost:4000/health` → `{ "status": "ok" }`
+Muhit o'zgaruvchilari (`.env`):
 
-### Frontend
+| O'zgaruvchi      | Tavsif                              | Standart                              |
+| ---------------- | ----------------------------------- | ------------------------------------- |
+| `PORT`           | Server porti                        | `4000`                                |
+| `MONGODB_URI`    | MongoDB ulanish satri               | `mongodb://127.0.0.1:27017/easytrade` |
+| `JWT_SECRET`     | JWT imzo kaliti                     | (majburiy o'zgartiring)               |
+| `JWT_EXPIRES_IN` | Token amal qilish muddati           | `7d`                                  |
+| `OPENAI_API_KEY` | OpenAI kaliti (ixtiyoriy)           | —                                     |
+| `OPENAI_MODEL`   | OpenAI modeli                       | `gpt-4o`                              |
+| `CORS_ORIGIN`    | Ruxsat etilgan origin(lar) yoki `*` | `*`                                   |
+
+### 2. Frontend
 
 ```bash
 cd frontend
-cp .env.local.example .env.local
 npm install
+# ixtiyoriy: echo "NEXT_PUBLIC_API_URL=http://localhost:4000" > .env.local
 npm run dev            # http://localhost:3000
 ```
 
-## O'rnatilgan paket versiyalari
+## Skriptlar
 
-Loyiha quyidagi eng so'nggi stable versiyalar bilan qurilgan (2026-07-04):
+| Buyruq          | Joy      | Vazifa             |
+| --------------- | -------- | ------------------ |
+| `npm run dev`   | ikkalasi | Development server |
+| `npm run build` | ikkalasi | Production build   |
+| `npm start`     | ikkalasi | Production server  |
+| `npm test`      | ikkalasi | Jest testlari      |
 
-### Backend
+## API (asosiy)
 
-| Paket | Versiya |
-|-------|---------|
-| Node.js (runtime) | ES modules (`"type": "module"`) |
-| Express | 5.2.1 |
-| cors | 2.8.6 |
-| dotenv | 17.4.2 |
-| axios | 1.18.1 |
-| @anthropic-ai/sdk | 0.110.0 |
-| TypeScript | 6.0.3 |
-| tsx | 4.23.0 |
-| @types/express | 5.0.6 |
-| @types/cors | 2.8.19 |
-| @types/node | 26.1.0 |
+| Metod                 | Endpoint             | Auth | Tavsif                   |
+| --------------------- | -------------------- | ---- | ------------------------ |
+| POST                  | `/api/auth/register` | —    | Ro'yxatdan o'tish        |
+| POST                  | `/api/auth/login`    | —    | Kirish                   |
+| GET                   | `/api/auth/me`       | ✓    | Profil                   |
+| PATCH                 | `/api/auth/settings` | ✓    | Sozlamalarni yangilash   |
+| POST                  | `/api/analyze`       | —    | To'liq signal + AI izoh  |
+| GET                   | `/api/screener`      | —    | Bozor skaneri            |
+| GET                   | `/api/backtest`      | —    | Backtest natijalari      |
+| GET/POST/DELETE       | `/api/watchlist`     | ✓    | Watchlist CRUD           |
+| GET/POST/PATCH/DELETE | `/api/journal`       | ✓    | Savdo jurnali + `/stats` |
+| GET/POST/DELETE       | `/api/alerts`        | ✓    | Ogohlantirishlar CRUD    |
+| POST                  | `/api/chat`          | ✓    | Streaming AI chat (SSE)  |
 
-### Frontend
+## Xavfsizlik eslatmasi
 
-| Paket | Versiya |
-|-------|---------|
-| Next.js | 16.2.10 |
-| React | 19.2.4 |
-| React DOM | 19.2.4 |
-| Tailwind CSS | 4.3.2 |
-| TypeScript | 5.9.3 |
-| ESLint | 9.39.4 |
-| shadcn CLI | 4.13.0 |
-| @base-ui/react | 1.6.0 |
+`.env` git'da kuzatilmaydi. Repozitoriyda haqiqiy maxfiy kalitlar bo'lmasin —
+Atlas paroli va OpenAI kalitini muntazam almashtirib turing.
 
-## Keyingi bosqichlar
+## Testlar
 
-- Backend: `src/routes/`, `src/services/` — API va AI tahlil logikasi
-- Frontend: trading dashboard UI va backend integratsiyasi
+- Backend: signal indikatorlari, MTF confluence, backtest statistikasi, JWT token.
+- Frontend: format yordamchilari, StatCard (RTL).
+
+```bash
+cd backend && npm test
+cd frontend && npm test
+```

@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { env } from "../config/env.js";
 import type { AnalysisInput } from "../types/index.js";
 
 const SYSTEM_MESSAGE = `Sen professional kripto trading tahlilchisan. Foydalanuvchiga moliyaviy maslahat emas.
@@ -12,8 +13,12 @@ Qoidalar:
 
 let client: OpenAI | null = null;
 
-function getClient(): OpenAI {
-  const apiKey = process.env.OPENAI_API_KEY;
+export function isOpenAiConfigured(): boolean {
+  return Boolean(env.OPENAI_API_KEY);
+}
+
+export function getClient(): OpenAI {
+  const apiKey = env.OPENAI_API_KEY;
 
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY muhit o'zgaruvchisi sozlanmagan");
@@ -49,6 +54,7 @@ Verdikt: ${data.verdict.verdictLabel} — ${data.verdict.headline}
 Sababi: ${data.verdict.reason}
 Kirish zonasi: ${data.verdict.entryZone[0]} – ${data.verdict.entryZone[1]}
 Invalidation: ${data.verdict.invalidation}
+${data.verdict.btcNote ? `BTC bozor rejimi: ${data.verdict.btcNote}` : ""}
 
 Indikatorlar:
 - EMA50: ${data.indicators.ema50}
@@ -69,7 +75,7 @@ ${data.strategy.label} strategiyasi bo'yicha qisqa tahlil yoz.`;
 }
 
 export async function generateAnalysis(data: AnalysisInput): Promise<string> {
-  const model = process.env.OPENAI_MODEL ?? "gpt-4o";
+  const model = env.OPENAI_MODEL;
   const openai = getClient();
 
   const completion = await openai.chat.completions.create({
@@ -88,4 +94,62 @@ export async function generateAnalysis(data: AnalysisInput): Promise<string> {
   }
 
   return content;
+}
+
+export async function* streamAnalysis(
+  data: AnalysisInput,
+): AsyncGenerator<string> {
+  const openai = getClient();
+
+  const stream = await openai.chat.completions.create({
+    model: env.OPENAI_MODEL,
+    max_tokens: 400,
+    stream: true,
+    messages: [
+      { role: "system", content: SYSTEM_MESSAGE },
+      { role: "user", content: buildUserPrompt(data) },
+    ],
+  });
+
+  for await (const chunk of stream) {
+    const delta = chunk.choices[0]?.delta?.content;
+    if (delta) {
+      yield delta;
+    }
+  }
+}
+
+const CHAT_SYSTEM_MESSAGE = `Sen professional kripto trading yordamchisisan. O'zbek tilida qisqa va aniq javob ber.
+- Foydalanuvchiga moliyaviy maslahat berma, faqat texnik kontekstni tushuntir.
+- Berilgan joriy setup ma'lumotlaridan foydalan.
+- Aniq buy/sell buyrug'i berma.`;
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export async function* streamChat(
+  messages: ChatMessage[],
+  context?: string,
+): AsyncGenerator<string> {
+  const openai = getClient();
+
+  const systemContent = context
+    ? `${CHAT_SYSTEM_MESSAGE}\n\nJoriy setup:\n${context}`
+    : CHAT_SYSTEM_MESSAGE;
+
+  const stream = await openai.chat.completions.create({
+    model: env.OPENAI_MODEL,
+    temperature: 0.4,
+    stream: true,
+    messages: [{ role: "system", content: systemContent }, ...messages],
+  });
+
+  for await (const chunk of stream) {
+    const delta = chunk.choices[0]?.delta?.content;
+    if (delta) {
+      yield delta;
+    }
+  }
 }

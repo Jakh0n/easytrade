@@ -19,9 +19,12 @@ const EXCLUDED_SYMBOLS = new Set([
 const DEFAULT_INTERVAL = "4h";
 const RESULT_LIMIT = 20;
 const MIN_QUOTE_VOLUME = 50_000;
-const CONCURRENCY = 6;
+// Only scan the most liquid pairs. Caps Binance API calls per scan (avoids
+// 429/418 rate-limit bans) and matches the "strong volume first" ranking.
+const MAX_SCAN = 150;
+const CONCURRENCY = 5;
 const CACHE_TTL_MS = 5 * 60 * 1000;
-const REQUEST_DELAY_MS = 80;
+const REQUEST_DELAY_MS = 120;
 
 let cache: { key: string; data: ScreenerResponse; expiresAt: number } | null =
   null;
@@ -76,9 +79,24 @@ async function runPool<T, R>(
   return results;
 }
 
+/**
+ * Ranks an actionable setup so the strongest, immediately-tradeable coins float
+ * to the top: current volume surge dominates, then strategy confidence and R:R.
+ */
+function computeOpportunityScore(
+  volumeStatus: ScreenerCoinResult["volumeStatus"],
+  confidence: number,
+  rrIdeal: number,
+): number {
+  const volumeScore =
+    volumeStatus === "high" ? 100 : volumeStatus === "normal" ? 40 : 0;
+  return Math.round(volumeScore + confidence * 0.6 + rrIdeal * 6);
+}
+
 async function scanSymbol(
   symbol: string,
   priceChangePercent: number,
+  quoteVolume: number,
   interval: string,
   marketType: MarketType,
 ): Promise<ScreenerCoinResult | null> {
@@ -89,11 +107,14 @@ async function scanSymbol(
       10_000,
       2,
       marketType,
+      false,
     );
 
     if (analysis.verdict.verdict !== "enter") {
       return null;
     }
+
+    const volumeStatus = analysis.indicators.volumeStatus;
 
     return {
       symbol: analysis.symbol,
@@ -107,6 +128,13 @@ async function scanSymbol(
       rrIdeal: analysis.verdict.rrIdeal,
       rsi: analysis.indicators.rsi,
       strategy: analysis.strategy,
+      volumeStatus,
+      quoteVolume,
+      opportunityScore: computeOpportunityScore(
+        volumeStatus,
+        analysis.strategy.confidence,
+        analysis.verdict.rrIdeal,
+      ),
     };
   } catch {
     return null;
@@ -126,7 +154,7 @@ export async function runMarketScreener(
 
   const tickers = await getAll24hrTickers(marketType);
 
-  const candidates = tickers
+  const eligible = tickers
     .filter(
       (ticker) =>
         isScannableSymbol(ticker.symbol) &&
@@ -134,11 +162,21 @@ export async function runMarketScreener(
     )
     .sort((a, b) => b.quoteVolume - a.quoteVolume);
 
+  const candidates = eligible.slice(0, MAX_SCAN);
+
   const scanned = await runPool(candidates, CONCURRENCY, (ticker) =>
-    scanSymbol(ticker.symbol, ticker.priceChangePercent, interval, marketType),
+    scanSymbol(
+      ticker.symbol,
+      ticker.priceChangePercent,
+      ticker.quoteVolume,
+      interval,
+      marketType,
+    ),
   );
 
-  const coins = scanned.sort((a, b) => b.rrIdeal - a.rrIdeal).slice(0, limit);
+  const coins = scanned
+    .sort((a, b) => b.opportunityScore - a.opportunityScore)
+    .slice(0, limit);
 
   const response: ScreenerResponse = {
     scanned: candidates.length,

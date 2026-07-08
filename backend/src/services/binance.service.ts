@@ -1,4 +1,5 @@
 import axios, { isAxiosError } from "axios";
+import { AppError } from "../utils/AppError.js";
 import type {
   BinanceKlineRaw,
   BinanceTicker24hrRaw,
@@ -26,8 +27,20 @@ function getTickerPath(marketType: MarketType): string {
 
 function handleBinanceError(error: unknown): never {
   if (isAxiosError(error)) {
-    if (error.response?.status === 400) {
+    const status = error.response?.status;
+
+    if (status === 400) {
       throw new Error("Symbol topilmadi yoki noto'g'ri");
+    }
+
+    // 429 = rate limit exceeded, 418 = IP auto-banned for ignoring limits.
+    if (status === 429 || status === 418) {
+      const retryAfter = error.response?.headers?.["retry-after"];
+      const waitText = retryAfter ? ` (~${retryAfter}s kuting)` : "";
+      throw new AppError(
+        `Binance so'rov limiti oshib ketdi, IP vaqtincha cheklangan${waitText}. Biroz kuting.`,
+        503,
+      );
     }
 
     if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT") {
@@ -47,6 +60,20 @@ function handleBinanceError(error: unknown): never {
 
   throw new Error("Kutilmagan xato yuz berdi");
 }
+
+/**
+ * Short-lived in-memory cache for public market data. Analyze + AI summary +
+ * screener frequently request the same klines within seconds, so caching avoids
+ * hammering Binance and tripping its rate limits (429/418).
+ */
+const KLINES_TTL_MS = 30_000;
+const TICKERS_TTL_MS = 30_000;
+
+const klinesCache = new Map<string, { data: Candle[]; expiresAt: number }>();
+const tickersCache = new Map<
+  string,
+  { data: Ticker24hr[]; expiresAt: number }
+>();
 
 function parseKline(raw: BinanceKlineRaw): Candle {
   return {
@@ -76,16 +103,28 @@ export async function getKlines(
   limit: number = 300,
   marketType: MarketType = "spot",
 ): Promise<Candle[]> {
+  const normalizedSymbol = symbol.toUpperCase();
+  const cacheKey = `${marketType}:${normalizedSymbol}:${interval}:${limit}`;
+  const cached = klinesCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
+
   try {
     const { data } = await axios.get<BinanceKlineRaw[]>(
       `${getBaseUrl(marketType)}${getKlinesPath(marketType)}`,
       {
-        params: { symbol: symbol.toUpperCase(), interval, limit },
+        params: { symbol: normalizedSymbol, interval, limit },
         timeout: 10_000,
       },
     );
 
-    return data.map(parseKline);
+    const candles = data.map(parseKline);
+    klinesCache.set(cacheKey, {
+      data: candles,
+      expiresAt: Date.now() + KLINES_TTL_MS,
+    });
+    return candles;
   } catch (error) {
     handleBinanceError(error);
   }
@@ -113,13 +152,23 @@ export async function get24hrTicker(
 export async function getAll24hrTickers(
   marketType: MarketType = "spot",
 ): Promise<Ticker24hr[]> {
+  const cached = tickersCache.get(marketType);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
+
   try {
     const { data } = await axios.get<BinanceTicker24hrRaw[]>(
       `${getBaseUrl(marketType)}${getTickerPath(marketType)}`,
       { timeout: 15_000 },
     );
 
-    return data.map(parseTicker);
+    const tickers = data.map(parseTicker);
+    tickersCache.set(marketType, {
+      data: tickers,
+      expiresAt: Date.now() + TICKERS_TTL_MS,
+    });
+    return tickers;
   } catch (error) {
     handleBinanceError(error);
   }

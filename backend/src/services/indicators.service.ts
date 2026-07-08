@@ -1,5 +1,10 @@
 import type { Candle, SupportResistance, VolumeStatus } from "../types/index.js";
 
+export interface SwingPoint {
+  index: number;
+  price: number;
+}
+
 function assertPositivePeriod(period: number, label: string): void {
   if (!Number.isFinite(period) || period <= 0) {
     throw new Error(`${label} musbat son bo'lishi kerak`);
@@ -133,6 +138,63 @@ export function calculateATR(candles: Candle[], period: number = 14): number {
   return atr;
 }
 
+export function findSwingLows(
+  candles: Candle[],
+  left: number = 3,
+  right: number = 3,
+): SwingPoint[] {
+  const swings: SwingPoint[] = [];
+
+  for (let i = left; i < candles.length - right; i++) {
+    const pivot = candles[i]!.low;
+    let isLow = true;
+
+    for (let j = i - left; j <= i + right; j++) {
+      if (j !== i && candles[j]!.low <= pivot) {
+        isLow = false;
+        break;
+      }
+    }
+
+    if (isLow) {
+      swings.push({ index: i, price: pivot });
+    }
+  }
+
+  return swings;
+}
+
+export function findSwingHighs(
+  candles: Candle[],
+  left: number = 3,
+  right: number = 3,
+): SwingPoint[] {
+  const swings: SwingPoint[] = [];
+
+  for (let i = left; i < candles.length - right; i++) {
+    const pivot = candles[i]!.high;
+    let isHigh = true;
+
+    for (let j = i - left; j <= i + right; j++) {
+      if (j !== i && candles[j]!.high >= pivot) {
+        isHigh = false;
+        break;
+      }
+    }
+
+    if (isHigh) {
+      swings.push({ index: i, price: pivot });
+    }
+  }
+
+  return swings;
+}
+
+/**
+ * Structural support/resistance from confirmed swing pivots, falling back to the
+ * raw low/high range when no pivots are present. Using pivots instead of the
+ * absolute min/max filters out single-candle wicks that distort entry zones.
+ */
 export function findSupportResistance(
   candles: Candle[],
   lookback: number = 30,
@@ -141,10 +203,15 @@ export function findSupportResistance(
   assertPositivePeriod(lookback, "lookback");
 
   const recent = candles.slice(-lookback);
+  const rawSupport = Math.min(...recent.map((candle) => candle.low));
+  const rawResistance = Math.max(...recent.map((candle) => candle.high));
+
+  const swingLows = findSwingLows(recent).map((swing) => swing.price);
+  const swingHighs = findSwingHighs(recent).map((swing) => swing.price);
 
   return {
-    support: Math.min(...recent.map((candle) => candle.low)),
-    resistance: Math.max(...recent.map((candle) => candle.high)),
+    support: swingLows.length > 0 ? Math.min(...swingLows) : rawSupport,
+    resistance: swingHighs.length > 0 ? Math.max(...swingHighs) : rawResistance,
   };
 }
 

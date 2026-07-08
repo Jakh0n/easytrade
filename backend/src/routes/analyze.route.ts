@@ -1,17 +1,6 @@
 import { Router } from "express";
-import { getKlines } from "../services/binance.service.js";
-import {
-  calculateATR,
-  calculateEMA,
-  calculateRSI,
-  findSupportResistance,
-  getVolumeStatus,
-} from "../services/indicators.service.js";
+import { buildTechnicalAnalysis } from "../services/analysis.service.js";
 import { generateAnalysis } from "../services/openai.service.js";
-import {
-  calculateRiskLevels,
-  determineTrend,
-} from "../services/risk.service.js";
 import type { AnalyzeRequestBody } from "../types/index.js";
 
 const router = Router();
@@ -19,17 +8,6 @@ const router = Router();
 const DEFAULT_CAPITAL = 10_000;
 const DEFAULT_RISK_PERCENT = 2;
 const DEFAULT_INTERVAL = "4h";
-const KLINE_LIMIT = 300;
-
-function getLastEma(emaValues: number[]): number {
-  const lastValue = emaValues[emaValues.length - 1];
-
-  if (lastValue === undefined || Number.isNaN(lastValue)) {
-    throw new Error("EMA hisoblash uchun yetarli ma'lumot yo'q");
-  }
-
-  return lastValue;
-}
 
 router.post("/analyze", async (req, res) => {
   try {
@@ -38,10 +16,13 @@ router.post("/analyze", async (req, res) => {
       capital = DEFAULT_CAPITAL,
       riskPercent = DEFAULT_RISK_PERCENT,
       interval = DEFAULT_INTERVAL,
+      marketType = "spot",
     } = req.body as AnalyzeRequestBody;
 
     if (!symbol || typeof symbol !== "string") {
-      res.status(400).json({ error: "symbol majburiy va string bo'lishi kerak" });
+      res
+        .status(400)
+        .json({ error: "symbol majburiy va string bo'lishi kerak" });
       return;
     }
 
@@ -55,70 +36,46 @@ router.post("/analyze", async (req, res) => {
       return;
     }
 
-    const normalizedSymbol = symbol.toUpperCase();
-    const candles = await getKlines(normalizedSymbol, interval, KLINE_LIMIT);
-    const closes = candles.map((candle) => candle.close);
-    const currentPrice = closes[closes.length - 1]!;
-
-    const ema50 = getLastEma(calculateEMA(closes, 50));
-    const ema200 = getLastEma(calculateEMA(closes, 200));
-    const rsi = calculateRSI(closes, 14);
-    const atr = calculateATR(candles, 14);
-    const { support, resistance } = findSupportResistance(candles, 30);
-    const volumeStatus = getVolumeStatus(candles);
-
-    const trend = determineTrend(ema50, ema200, currentPrice);
-    const risk = calculateRiskLevels({
-      currentPrice,
-      atr,
-      trend,
+    const analysis = await buildTechnicalAnalysis(
+      symbol,
+      interval,
       capital,
       riskPercent,
-    });
+      marketType,
+    );
 
-    const analysis = await generateAnalysis({
-      symbol: normalizedSymbol,
-      currentPrice,
-      trend,
-      indicators: {
-        ema50,
-        ema200,
-        rsi,
-        atr,
-        support,
-        resistance,
-        volumeStatus,
-      },
+    const aiAnalysis = await generateAnalysis({
+      symbol: analysis.symbol,
+      currentPrice: analysis.currentPrice,
+      trend: analysis.trend,
+      marketType: analysis.marketType,
+      indicators: analysis.indicators,
       risk: {
-        stopLoss: risk.stopLoss,
-        takeProfit: risk.takeProfit,
-        positionSize: risk.positionSize,
-        riskRewardRatio: risk.riskRewardRatio,
+        stopLoss: analysis.risk.stopLoss,
+        takeProfit: analysis.risk.takeProfit,
+        positionSize: analysis.risk.positionSize,
+        riskRewardRatio: analysis.risk.riskRewardRatio,
+      },
+      strategy: analysis.strategy,
+      verdict: {
+        verdict: analysis.verdict.verdict,
+        verdictLabel: analysis.verdict.verdictLabel,
+        side: analysis.verdict.side,
+        headline: analysis.verdict.headline,
+        reason: analysis.verdict.reason,
+        rrNow: analysis.verdict.rrNow,
+        rrIdeal: analysis.verdict.rrIdeal,
+        entryZone: analysis.verdict.entryZone,
+        invalidation: analysis.verdict.invalidation,
+        stopLoss: analysis.verdict.stopLoss,
+        takeProfit: analysis.verdict.takeProfit,
       },
     });
 
     res.json({
-      symbol: normalizedSymbol,
-      interval,
-      currentPrice,
-      trend,
-      indicators: {
-        ema50,
-        ema200,
-        rsi,
-        atr,
-        support,
-        resistance,
-        volumeStatus,
-      },
-      risk: {
-        stopLoss: risk.stopLoss,
-        takeProfit: risk.takeProfit,
-        positionSize: risk.positionSize,
-        riskRewardRatio: risk.riskRewardRatio,
-        warning: risk.warning,
-      },
-      analysis,
+      ...analysis,
+      risk: analysis.risk,
+      analysis: aiAnalysis,
     });
   } catch (error) {
     const message =

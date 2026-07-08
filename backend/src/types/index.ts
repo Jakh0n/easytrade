@@ -38,25 +38,23 @@ export interface BinanceTicker24hrRaw {
 
 export type Trend = "bullish" | "bearish" | "neutral";
 export type VolumeStatus = "high" | "normal" | "low";
+export type MarketType = "spot" | "futures";
+export type TradeSide = "long" | "short" | null;
 
 export interface SupportResistance {
   support: number;
   resistance: number;
 }
 
-export interface RiskLevelsParams {
+export interface PositionSizingParams {
   currentPrice: number;
-  atr: number;
-  trend: Trend;
+  stopLoss: number;
   capital: number;
   riskPercent: number;
 }
 
-export interface RiskLevelsResult {
-  stopLoss: number;
-  takeProfit: number;
+export interface PositionSizingResult {
   positionSize: number;
-  riskRewardRatio: number;
   warning?: string;
 }
 
@@ -67,7 +65,7 @@ export interface AnalysisIndicators {
   atr: number;
   support: number;
   resistance: number;
-  volumeStatus: string;
+  volumeStatus: VolumeStatus;
 }
 
 export interface AnalysisRisk {
@@ -81,8 +79,11 @@ export interface AnalysisInput {
   symbol: string;
   currentPrice: number;
   trend: string;
+  marketType: string;
   indicators: AnalysisIndicators;
   risk: AnalysisRisk;
+  strategy: StrategyInfo;
+  verdict: VerdictInfo;
 }
 
 export interface AnalyzeRequestBody {
@@ -90,4 +91,61 @@ export interface AnalyzeRequestBody {
   capital?: number;
   riskPercent?: number;
   interval?: string;
+  marketType?: MarketType;
+}
+
+export type StrategyType =
+  | "trend_pullback"
+  | "breakout_retest"
+  | "ema_crossover"
+  | "rsi_divergence";
+
+export interface StrategyChecklistItem {
+  label: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface StrategyInfo {
+  type: StrategyType;
+  label: string;
+  description: string;
+  confidence: number;
+  checklist: StrategyChecklistItem[];
+}
+
+export interface VerdictInfo {
+  verdict: "enter" | "wait" | "avoid";
+  verdictLabel: string;
+  side: TradeSide;
+  headline: string;
+  reason: string;
+  rrNow: number;
+  rrIdeal: number;
+  entryZone: [number, number];
+  invalidation: number;
+  stopLoss: number;
+  takeProfit: number;
+}
+
+export interface ScreenerCoinResult {
+  symbol: string;
+  currentPrice: number;
+  priceChangePercent: number;
+  trend: Trend;
+  verdict: "enter" | "wait" | "avoid";
+  verdictLabel: string;
+  side: TradeSide;
+  reason: string;
+  rrIdeal: number;
+  rsi: number;
+  strategy: StrategyInfo;
+}
+
+export interface ScreenerResponse {
+  scanned: number;
+  interval: string;
+  marketType: MarketType;
+  updatedAt: string;
+  coins: ScreenerCoinResult[];
 }

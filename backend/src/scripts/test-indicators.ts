@@ -7,7 +7,7 @@ import {
   getVolumeStatus,
 } from "../services/indicators.service.js";
 import {
-  calculateRiskLevels,
+  computePositionSizing,
   determineTrend,
 } from "../services/risk.service.js";
 
@@ -30,17 +30,20 @@ async function main() {
   console.log("EMA200:", lastEma200.toFixed(2));
 
   const trend = determineTrend(lastEma50, lastEma200, currentPrice);
-  const risk = calculateRiskLevels({
+  const atr = calculateATR(candles, 14);
+  const sampleStopLoss =
+    trend === "bearish" ? currentPrice + 1.5 * atr : currentPrice - 1.5 * atr;
+  const sizing = computePositionSizing({
     currentPrice,
-    atr: calculateATR(candles, 14),
-    trend,
+    stopLoss: sampleStopLoss,
     capital: 10_000,
     riskPercent: 2,
   });
 
-  console.log("\n--- Risk (capital=10000, risk=2%) ---");
+  console.log("\n--- Position sizing (capital=10000, risk=2%) ---");
   console.log("Trend:", trend);
-  console.log(JSON.stringify(risk, null, 2));
+  console.log("Sample stop-loss:", sampleStopLoss.toFixed(2));
+  console.log(JSON.stringify(sizing, null, 2));
 }
 
 main().catch((error) => {

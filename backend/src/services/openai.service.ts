@@ -1,14 +1,14 @@
 import OpenAI from "openai";
 import type { AnalysisInput } from "../types/index.js";
 
-const SYSTEM_MESSAGE = `Sen professional kripto spot trading tahlilchisan. Foydalanuvchiga moliyaviy maslahat emas, balki texnik ma'lumotlarga asoslangan tahlil ber.
+const SYSTEM_MESSAGE = `Sen professional kripto trading tahlilchisan. Foydalanuvchiga moliyaviy maslahat emas.
 
 Qoidalar:
-- O'zbek tilida, qisqa va tushunarli yoz
-- Trend, indikatorlar va support/resistance darajalarini tahlil qil
-- Risk darajalari (stop loss, take profit) ni texnik nuqtai nazardan izohla
-- Har doim oxirida "Bu moliyaviy maslahat emas" deb ogohlantirish qo'sh
-- Aniq buy/sell buyrug'i bermagin, faqat texnik kuzatuvlar va ehtimolliklarni yoz`;
+- O'zbek tilida, maksimum 150 so'z
+- 3 qisqa paragraph: tanlangan strategiya bo'yicha holat, kirish/kutish sababi, risk nuqtasi
+- Faqat berilgan strategiyani tushuntir — boshqa strategiya taklif qilma
+- Aniq buy/sell buyrug'i bermagin
+- Oxirida "Bu moliyaviy maslahat emas" deb yoz`;
 
 let client: OpenAI | null = null;
 
@@ -27,10 +27,28 @@ function getClient(): OpenAI {
 }
 
 function buildUserPrompt(data: AnalysisInput): string {
-  return `Quyidagi ${data.symbol} spot trading ma'lumotlarini tahlil qil:
+  const checklistText = data.strategy.checklist
+    .map(
+      (item) => `- ${item.label}: ${item.passed ? "✓" : "✗"} (${item.detail})`,
+    )
+    .join("\n");
 
+  return `Quyidagi ${data.symbol} ${data.marketType.toUpperCase()} ma'lumotlarini tahlil qil:
+
+Bozor turi: ${data.marketType === "futures" ? "Futures (long/short)" : "Spot (faqat long)"}
 Joriy narx: ${data.currentPrice}
 Trend: ${data.trend}
+
+Tanlangan strategiya: ${data.strategy.label} (${data.strategy.confidence}% ishonch)
+Tavsif: ${data.strategy.description}
+
+Strategiya checklist:
+${checklistText}
+
+Verdikt: ${data.verdict.verdictLabel} — ${data.verdict.headline}
+Sababi: ${data.verdict.reason}
+Kirish zonasi: ${data.verdict.entryZone[0]} – ${data.verdict.entryZone[1]}
+Invalidation: ${data.verdict.invalidation}
 
 Indikatorlar:
 - EMA50: ${data.indicators.ema50}
@@ -47,7 +65,7 @@ Risk darajalari:
 - Position Size: ${data.risk.positionSize}
 - Risk/Reward: ${data.risk.riskRewardRatio}
 
-Texnik tahlil, asosiy kuzatuvlar va ehtimoliy senariylarni yoz.`;
+${data.strategy.label} strategiyasi bo'yicha qisqa tahlil yoz.`;
 }
 
 export async function generateAnalysis(data: AnalysisInput): Promise<string> {
@@ -56,7 +74,7 @@ export async function generateAnalysis(data: AnalysisInput): Promise<string> {
 
   const completion = await openai.chat.completions.create({
     model,
-    max_tokens: 1000,
+    max_tokens: 400,
     messages: [
       { role: "system", content: SYSTEM_MESSAGE },
       { role: "user", content: buildUserPrompt(data) },

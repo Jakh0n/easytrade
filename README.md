@@ -23,6 +23,9 @@ ogohlantirishlar va grounded AI chat.
 - **Auth** — JWT + bcrypt, per-user sozlamalar.
 - **Watchlist / Savdo jurnali / Ogohlantirishlar** — MongoDB'da saqlanadi;
   jurnal P&L, R-multiple, win rate, expectancy va equity egri chizig'i.
+- **Uzoq muddat investitsiya** — 1-24 oy uchun spot hold tahlili: makro trend
+  (kunlik EMA), haftalik RSI, 52 haftalik cho'qqi/tub, DCA rejasi (3 bosqich:
+  40/30/30%), maqsadlar va invalidation darajasi.
 - **Ogohlantirishlar** — `node-cron` har daqiqada narx / kirish zonasi / signal
   ogohlantirishlarini baholaydi; brauzer bildirishnomalari.
 - **UI** — Next.js App Router, sidebar shell, dark mode, jonli narx (Binance
@@ -147,6 +150,8 @@ npm run dev            # http://localhost:3000
 | GET                   | `/api/auth/me`       | ✓    | Profil                   |
 | PATCH                 | `/api/auth/settings` | ✓    | Sozlamalarni yangilash   |
 | POST                  | `/api/analyze`       | —    | To'liq signal + AI izoh  |
+| POST                  | `/api/invest`        | —    | Uzoq muddat DCA tahlili  |
+| GET                   | `/api/invest/screener` | —  | Uzoq muddat imkoniyatlari |
 | GET                   | `/api/screener`      | —    | Bozor skaneri            |
 | GET                   | `/api/backtest`      | —    | Backtest natijalari      |
 | GET/POST/DELETE       | `/api/watchlist`     | ✓    | Watchlist CRUD           |

@@ -10,6 +10,7 @@ import analyzeRouter from "./routes/analyze.route.js";
 import authRouter from "./routes/auth.route.js";
 import backtestRouter from "./routes/backtest.route.js";
 import chatRouter from "./routes/chat.route.js";
+import investRouter from "./routes/invest.route.js";
 import journalRouter from "./routes/journal.route.js";
 import screenerRouter from "./routes/screener.route.js";
 import watchlistRouter from "./routes/watchlist.route.js";
@@ -36,6 +37,7 @@ app.use("/api", watchlistRouter);
 app.use("/api", journalRouter);
 app.use("/api", alertRouter);
 app.use("/api", chatRouter);
+app.use("/api", investRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

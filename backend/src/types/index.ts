@@ -228,6 +228,76 @@ export interface AuthResponse {
   user: PublicUser;
 }
 
+export type InvestHorizon = "1_3" | "3_6" | "6_12" | "12_24";
+
+export type InvestVerdict = "accumulate" | "dca_wait" | "avoid";
+
+export interface DcaTranche {
+  label: string;
+  price: number;
+  allocationPercent: number;
+  amountUsd: number;
+  units: number;
+  note: string;
+}
+
+export interface InvestTarget {
+  label: string;
+  price: number;
+  upsidePercent: number;
+}
+
+export interface InvestAnalysis {
+  symbol: string;
+  horizon: InvestHorizon;
+  horizonLabel: string;
+  currentPrice: number;
+  verdict: InvestVerdict;
+  verdictLabel: string;
+  score: number;
+  reason: string;
+  trend: Trend;
+  weeklyRsi: number;
+  high52w: number;
+  low52w: number;
+  drawdownFromHigh: number;
+  supportZones: number[];
+  targets: InvestTarget[];
+  invalidation: number;
+  maxLossPercent: number;
+  averageEntry: number;
+  dcaPlan: DcaTranche[];
+  checklist: StrategyChecklistItem[];
+  btcTrend: Trend;
+  generatedAt: string;
+}
+
+export interface InvestScreenerCoinResult {
+  symbol: string;
+  currentPrice: number;
+  priceChangePercent: number;
+  quoteVolume: number;
+  horizon: InvestHorizon;
+  horizonLabel: string;
+  verdict: InvestVerdict;
+  verdictLabel: string;
+  score: number;
+  reason: string;
+  trend: Trend;
+  weeklyRsi: number;
+  drawdownFromHigh: number;
+  topTargetUpside: number;
+  opportunityScore: number;
+}
+
+export interface InvestScreenerResponse {
+  scanned: number;
+  horizon: InvestHorizon;
+  btcTrend: Trend;
+  updatedAt: string;
+  coins: InvestScreenerCoinResult[];
+}
+
 export interface BacktestStrategyStat {
   strategy: StrategyType;
   label: string;

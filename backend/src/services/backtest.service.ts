@@ -9,10 +9,7 @@ import {
   getVolumeStatus,
 } from "./indicators.service.js";
 import { determineTrend } from "./risk.service.js";
-import {
-  buildStrategyVerdict,
-  type StrategyType,
-} from "./strategy.service.js";
+import { buildStrategyVerdict, type StrategyType } from "./strategy.service.js";
 import type {
   BacktestStrategyStat,
   BacktestSummary,
@@ -24,6 +21,9 @@ import type {
 const HISTORY_LIMIT = 1000;
 const WARMUP_BARS = 210;
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+// Time stop: a trade that hits neither SL nor TP within this many bars is
+// closed at market — capital must not stay locked in a dead setup.
+const MAX_HOLD_BARS = 40;
 
 const STRATEGY_LABELS: Record<StrategyType, string> = {
   trend_pullback: "Trend Pullback",
@@ -38,6 +38,7 @@ interface OpenTrade {
   stopLoss: number;
   takeProfit: number;
   strategy: StrategyType;
+  openedIndex: number;
 }
 
 export interface ClosedTrade {
@@ -86,7 +87,26 @@ function resolveExit(trade: OpenTrade, candle: Candle): ClosedTrade | null {
   return null;
 }
 
-export function summarizeBacktest(trades: ClosedTrade[]): Omit<
+/** Market close at the given price (used by the time stop). */
+function closeAtPrice(trade: OpenTrade, price: number): ClosedTrade | null {
+  const risk =
+    trade.side === "long"
+      ? trade.entry - trade.stopLoss
+      : trade.stopLoss - trade.entry;
+
+  if (risk <= 0) {
+    return null;
+  }
+
+  const pnl = trade.side === "long" ? price - trade.entry : trade.entry - price;
+  const rMultiple = pnl / risk;
+
+  return { strategy: trade.strategy, rMultiple, win: rMultiple > 0 };
+}
+
+export function summarizeBacktest(
+  trades: ClosedTrade[],
+): Omit<
   BacktestSummary,
   "symbol" | "interval" | "marketType" | "candlesAnalyzed" | "generatedAt"
 > {
@@ -97,7 +117,9 @@ export function summarizeBacktest(trades: ClosedTrade[]): Omit<
     byStrategy.set(trade.strategy, bucket);
   }
 
-  const statFor = (list: ClosedTrade[]): {
+  const statFor = (
+    list: ClosedTrade[],
+  ): {
     trades: number;
     wins: number;
     losses: number;
@@ -134,10 +156,7 @@ export function summarizeBacktest(trades: ClosedTrade[]): Omit<
   return { ...overall, byStrategy: strategyStats };
 }
 
-function runReplay(
-  candles: Candle[],
-  marketType: MarketType,
-): ClosedTrade[] {
+function runReplay(candles: Candle[], marketType: MarketType): ClosedTrade[] {
   const trades: ClosedTrade[] = [];
   let open: OpenTrade | null = null;
 
@@ -145,7 +164,11 @@ function runReplay(
     const candle = candles[i]!;
 
     if (open) {
-      const closed = resolveExit(open, candle);
+      const closed =
+        resolveExit(open, candle) ??
+        (i - open.openedIndex >= MAX_HOLD_BARS
+          ? closeAtPrice(open, candle.close)
+          : null);
       if (closed) {
         trades.push(closed);
         open = null;
@@ -189,6 +212,7 @@ function runReplay(
         stopLoss: verdict.stopLoss,
         takeProfit: verdict.takeProfit,
         strategy: verdict.strategy.type,
+        openedIndex: i,
       };
     }
   }

@@ -8,11 +8,18 @@ ogohlantirishlar va grounded AI chat.
 
 - **Signal engine** — EMA/RSI/ATR, support/resistance (swing-based), 4 strategiya
   (Trend Pullback, Breakout + Retest, EMA Crossover, RSI Divergence), side-aware
-  SL/TP va R:R, blended confidence.
+  SL/TP va R:R, blended confidence. Sham formatsiyalari (engulfing, hammer,
+  shooting star) volume bilan tasdiqlanadi va confidence'ga ta'sir qiladi.
+- **Risk-menejment** — pozitsiya hajmi riskdagi puldan hisoblanadi (spot'da
+  kapital bilan cheklanadi), futures uchun xavfsiz leverage tavsiyasi
+  (likvidatsiya buferi ≥ 3× stop masofasi, maks. 5x) va kerakli margin.
+  Futures kirishlari uchun minimal R:R 1:2, spot uchun 1:1.5. Risk foizi
+  maksimum 10% bilan cheklangan.
 - **Multi-timeframe confluence** — yuqori timeframe trendi filtr sifatida; HTF
   qarama-qarshi bo'lsa `enter` → `wait` ga tushiriladi.
 - **Backtest** — 1000 tagacha shamda strategiyalarni qayta o'ynatib win rate,
-  o'rtacha R va expectancy hisoblaydi (Mongo'da keshlanadi).
+  o'rtacha R va expectancy hisoblaydi (Mongo'da keshlanadi). SL/TP'ga yetmagan
+  savdo 40 shamdan keyin vaqt stopi bilan yopiladi.
 - **Auth** — JWT + bcrypt, per-user sozlamalar.
 - **Watchlist / Savdo jurnali / Ogohlantirishlar** — MongoDB'da saqlanadi;
   jurnal P&L, R-multiple, win rate, expectancy va equity egri chizig'i.
@@ -67,7 +74,7 @@ backend/src/
   config/       env, db, scheduler (cron)
   middleware/   auth, validate (zod), error
   models/       User, Watchlist, Trade, Alert, BacktestResult
-  services/     analysis, strategy, indicators, risk, mtf, backtest,
+  services/     analysis, strategy, patterns, indicators, risk, mtf, backtest,
                 screener, binance, openai, auth, watchlist, journal, alert
   controllers/  har bir resurs uchun ingichka handlerlar
   routes/       Express routerlar (/api/...)
@@ -154,7 +161,8 @@ Atlas paroli va OpenAI kalitini muntazam almashtirib turing.
 
 ## Testlar
 
-- Backend: signal indikatorlari, MTF confluence, backtest statistikasi, JWT token.
+- Backend: signal indikatorlari, sham formatsiyalari, pozitsiya hajmi/leverage,
+  MTF confluence, backtest statistikasi, JWT token.
 - Frontend: format yordamchilari, StatCard (RTL).
 
 ```bash

@@ -41,6 +41,21 @@ export type VolumeStatus = "high" | "normal" | "low";
 export type MarketType = "spot" | "futures";
 export type TradeSide = "long" | "short" | null;
 
+export type PatternDirection = "bullish" | "bearish";
+
+export type PatternType =
+  | "bullish_engulfing"
+  | "bearish_engulfing"
+  | "hammer"
+  | "shooting_star";
+
+export interface CandlePattern {
+  type: PatternType;
+  label: string;
+  direction: PatternDirection;
+  volumeConfirmed: boolean;
+}
+
 export interface SupportResistance {
   support: number;
   resistance: number;
@@ -51,10 +66,21 @@ export interface PositionSizingParams {
   stopLoss: number;
   capital: number;
   riskPercent: number;
+  marketType: MarketType;
+}
+
+export interface FuturesGuidance {
+  suggestedLeverage: number;
+  maxSafeLeverage: number;
+  requiredMargin: number;
+  note: string;
 }
 
 export interface PositionSizingResult {
   positionSize: number;
+  riskAmount: number;
+  notional: number;
+  futures?: FuturesGuidance;
   warning?: string;
 }
 
@@ -72,7 +98,10 @@ export interface AnalysisRisk {
   stopLoss: number;
   takeProfit: number;
   positionSize: number;
+  riskAmount: number;
+  notional: number;
   riskRewardRatio: number;
+  futures?: FuturesGuidance;
 }
 
 export interface AnalysisInput {
@@ -126,6 +155,7 @@ export interface VerdictInfo {
   invalidation: number;
   stopLoss: number;
   takeProfit: number;
+  pattern?: CandlePattern | null;
   confluence?: number;
   htfTrend?: Trend;
   htfInterval?: string;
@@ -144,6 +174,7 @@ export interface ScreenerCoinResult {
   verdictLabel: string;
   side: TradeSide;
   reason: string;
+  rrNow: number;
   rrIdeal: number;
   rsi: number;
   strategy: StrategyInfo;

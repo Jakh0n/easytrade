@@ -22,7 +22,11 @@ export const loginSchema = z.object({
 export const settingsSchema = z
   .object({
     capital: z.coerce.number().positive().optional(),
-    riskPercent: z.coerce.number().positive().max(100).optional(),
+    riskPercent: z.coerce
+      .number()
+      .positive()
+      .max(10, "riskPercent 10% dan oshmasligi kerak")
+      .optional(),
     marketType: z.enum(["spot", "futures"]).optional(),
     theme: z.enum(["light", "dark", "system"]).optional(),
   })

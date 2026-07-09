@@ -38,6 +38,7 @@ async function main() {
     stopLoss: sampleStopLoss,
     capital: 10_000,
     riskPercent: 2,
+    marketType: "spot",
   });
 
   console.log("\n--- Position sizing (capital=10000, risk=2%) ---");

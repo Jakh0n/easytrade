@@ -16,7 +16,7 @@ export const analyzeBodySchema = z.object({
   riskPercent: z.coerce
     .number()
     .positive("riskPercent musbat bo'lishi kerak")
-    .max(100, "riskPercent 100 dan oshmasligi kerak")
+    .max(10, "riskPercent 10% dan oshmasligi kerak — risk-menejment chegarasi")
     .default(2),
   interval: intervalSchema,
   marketType: marketTypeSchema,

@@ -65,11 +65,23 @@ Indikatorlar:
 - Resistance: ${data.indicators.resistance}
 - Volume holati: ${data.indicators.volumeStatus}
 
+${
+  data.verdict.pattern
+    ? `Sham formatsiyasi: ${data.verdict.pattern.label} (${data.verdict.pattern.direction}${data.verdict.pattern.volumeConfirmed ? ", volume tasdiqlagan" : ""})`
+    : "Sham formatsiyasi: aniqlanmadi"
+}
+
 Risk darajalari:
 - Stop Loss: ${data.risk.stopLoss}
 - Take Profit: ${data.risk.takeProfit}
 - Position Size: ${data.risk.positionSize}
+- Riskdagi pul: ${data.risk.riskAmount.toFixed(2)} USD
 - Risk/Reward: ${data.risk.riskRewardRatio}
+${
+  data.risk.futures
+    ? `- Leverage tavsiyasi: ${data.risk.futures.suggestedLeverage}x (maksimum xavfsiz: ${data.risk.futures.maxSafeLeverage}x, isolated margin)`
+    : ""
+}
 
 ${data.strategy.label} strategiyasi bo'yicha qisqa tahlil yoz.`;
 }

@@ -81,16 +81,17 @@ async function runPool<T, R>(
 
 /**
  * Ranks an actionable setup so the strongest, immediately-tradeable coins float
- * to the top: current volume surge dominates, then strategy confidence and R:R.
+ * to the top: current volume surge dominates, then strategy confidence and the
+ * live R:R (rrNow — what a trader entering right now actually gets).
  */
 function computeOpportunityScore(
   volumeStatus: ScreenerCoinResult["volumeStatus"],
   confidence: number,
-  rrIdeal: number,
+  rrNow: number,
 ): number {
   const volumeScore =
     volumeStatus === "high" ? 100 : volumeStatus === "normal" ? 40 : 0;
-  return Math.round(volumeScore + confidence * 0.6 + rrIdeal * 6);
+  return Math.round(volumeScore + confidence * 0.6 + rrNow * 6);
 }
 
 async function scanSymbol(
@@ -125,6 +126,7 @@ async function scanSymbol(
       verdictLabel: analysis.verdict.verdictLabel,
       side: analysis.verdict.side,
       reason: analysis.verdict.reason,
+      rrNow: analysis.verdict.rrNow,
       rrIdeal: analysis.verdict.rrIdeal,
       rsi: analysis.indicators.rsi,
       strategy: analysis.strategy,
@@ -133,7 +135,7 @@ async function scanSymbol(
       opportunityScore: computeOpportunityScore(
         volumeStatus,
         analysis.strategy.confidence,
-        analysis.verdict.rrIdeal,
+        analysis.verdict.rrNow,
       ),
     };
   } catch {

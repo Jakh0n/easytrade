@@ -4,9 +4,11 @@ import {
   findSwingHighs,
   findSwingLows,
 } from "./indicators.service.js";
+import { detectCandlePattern, patternMatchesSide } from "./patterns.service.js";
 import type {
   AnalysisIndicators,
   Candle,
+  CandlePattern,
   MarketType,
   TradeSide,
   Trend,
@@ -47,6 +49,7 @@ export interface VerdictResult {
   stopLoss: number;
   takeProfit: number;
   strategy: StrategyDetection;
+  pattern?: CandlePattern | null;
   confluence?: number;
   htfTrend?: Trend;
   htfInterval?: string;
@@ -82,11 +85,21 @@ const STRATEGY_DESCRIPTIONS: Record<StrategyType, string> = {
     "Narx va RSI o'rtasidagi divergensiya reversal yoki davom signalini beradi",
 };
 
-// Minimum reward:risk required to allow an entry.
-const MIN_RR = 1.5;
+// Minimum reward:risk required to allow an entry. Futures entries demand a
+// full 1:2 because leverage amplifies both fees and mistakes.
+const MIN_RR_SPOT = 1.5;
+const MIN_RR_FUTURES = 2;
 const MIN_RR_DIVERGENCE = 1.8;
 // Take-profit distance as a multiple of the risk (entry → stop) distance.
 const TP_RR_MULTIPLE = 2;
+
+function minRrFor(marketType: MarketType): number {
+  return marketType === "futures" ? MIN_RR_FUTURES : MIN_RR_SPOT;
+}
+
+function minRrDivergence(marketType: MarketType): number {
+  return Math.max(MIN_RR_DIVERGENCE, minRrFor(marketType));
+}
 
 interface StrategyCandidate {
   type: StrategyType;
@@ -140,6 +153,32 @@ function buildLongLevels(
   const rrNow = currentRisk > 0 ? (takeProfit - currentPrice) / currentRisk : 0;
 
   return { stopLoss, takeProfit, rrNow, rrIdeal };
+}
+
+/**
+ * Shrinks an entry zone so every price inside it still satisfies the minimum
+ * reward:risk. Without this, the far edge of an ATR-wide zone can degrade the
+ * trade to ~1:1 even though the strategy demands 1:1.5+. The worst acceptable
+ * entry solves (TP - entry) = minRr * (entry - SL), i.e.
+ * entry = (TP + minRr * SL) / (1 + minRr) — same formula on both sides.
+ */
+export function clampEntryZoneToMinRr(
+  zone: [number, number],
+  levels: TradeLevels,
+  side: "long" | "short",
+  minRr: number,
+): [number, number] {
+  if (levels.rrIdeal <= 0) {
+    return zone;
+  }
+
+  const boundary = (levels.takeProfit + minRr * levels.stopLoss) / (1 + minRr);
+
+  if (side === "long") {
+    return [Math.min(zone[0], boundary), Math.min(zone[1], boundary)];
+  }
+
+  return [Math.max(zone[0], boundary), Math.max(zone[1], boundary)];
 }
 
 function buildShortLevels(
@@ -231,8 +270,7 @@ function detectBreakoutDirection(
     currentPrice >= resistance - atr * 1.5 &&
     currentPrice <= resistance + atr * 0.5;
   const retestShortZone =
-    currentPrice >= support - atr * 0.5 &&
-    currentPrice <= support + atr * 1.5;
+    currentPrice >= support - atr * 0.5 && currentPrice <= support + atr * 1.5;
 
   if (brokeUp && retestLongZone) {
     return "long";
@@ -489,7 +527,7 @@ export function detectStrategy(input: StrategyInput): StrategyDetection {
   const selected =
     best.score >= 45
       ? best
-      : candidates.find((item) => item.type === "trend_pullback") ?? best;
+      : (candidates.find((item) => item.type === "trend_pullback") ?? best);
 
   return {
     type,
@@ -503,12 +541,14 @@ export function detectStrategy(input: StrategyInput): StrategyDetection {
 /**
  * Turns the raw detection score into a conviction score that reflects whether
  * acting on the setup right now is sound: it blends pattern quality with trend
- * alignment, live reward:risk, volume support, and RSI extremes.
+ * alignment, candlestick confirmation, live reward:risk, volume support, and
+ * RSI extremes.
  */
 function finalizeConfidence(
   baseScore: number,
   input: StrategyInput,
   result: VerdictResult,
+  pattern: CandlePattern | null,
 ): number {
   const { trend, indicators } = input;
   const { verdict, side, rrNow } = result;
@@ -518,6 +558,15 @@ function finalizeConfidence(
     score += 6;
   } else if (verdict === "avoid") {
     score -= 20;
+  }
+
+  if (side !== null) {
+    if (patternMatchesSide(pattern, side)) {
+      score += pattern?.volumeConfirmed ? 10 : 6;
+    } else if (verdict === "enter") {
+      // Entry without a confirming candle is allowed but weaker.
+      score -= 6;
+    }
   }
 
   if (side !== null) {
@@ -562,11 +611,17 @@ function buildTrendPullbackVerdict(
   const { currentPrice, trend, indicators, marketType } = input;
 
   if (marketType === "spot" || trend === "bullish" || trend === "neutral") {
-    const entryZone = computeLongEntryZone(indicators.support, indicators.atr);
-    const [entryLow, entryHigh] = entryZone;
-    const idealEntry = (entryLow + entryHigh) / 2;
+    const rawZone = computeLongEntryZone(indicators.support, indicators.atr);
+    const idealEntry = (rawZone[0] + rawZone[1]) / 2;
     const invalidation = indicators.support - indicators.atr * 0.5;
     const levels = buildLongLevels(currentPrice, idealEntry, invalidation);
+    const entryZone = clampEntryZoneToMinRr(
+      rawZone,
+      levels,
+      "long",
+      minRrFor(marketType),
+    );
+    const [entryLow, entryHigh] = entryZone;
     const inEntryZone = currentPrice >= entryLow && currentPrice <= entryHigh;
     const nearEma50 =
       Math.abs(currentPrice - indicators.ema50) / currentPrice < 0.025;
@@ -597,7 +652,7 @@ function buildTrendPullbackVerdict(
 
     if (
       (inEntryZone || nearEma50) &&
-      levels.rrNow >= MIN_RR &&
+      levels.rrNow >= minRrFor(marketType) &&
       trend === "bullish" &&
       !rsiHigh &&
       !nearResistance
@@ -630,19 +685,21 @@ function buildTrendPullbackVerdict(
     };
   }
 
-  const entryZone = computeShortEntryZone(
-    indicators.resistance,
-    indicators.atr,
-  );
-  const [entryLow, entryHigh] = entryZone;
-  const idealEntry = (entryLow + entryHigh) / 2;
+  const rawZone = computeShortEntryZone(indicators.resistance, indicators.atr);
+  const idealEntry = (rawZone[0] + rawZone[1]) / 2;
   const invalidation = indicators.resistance + indicators.atr * 0.5;
   const levels = buildShortLevels(currentPrice, idealEntry, invalidation);
+  const entryZone = clampEntryZoneToMinRr(
+    rawZone,
+    levels,
+    "short",
+    minRrFor(marketType),
+  );
+  const [entryLow, entryHigh] = entryZone;
   const inEntryZone = currentPrice >= entryLow && currentPrice <= entryHigh;
   const nearEma50 =
     Math.abs(currentPrice - indicators.ema50) / currentPrice < 0.025;
-  const nearSupport =
-    (currentPrice - indicators.support) / currentPrice < 0.03;
+  const nearSupport = (currentPrice - indicators.support) / currentPrice < 0.03;
   const rsiLow = indicators.rsi < 30;
 
   if (currentPrice > invalidation) {
@@ -661,7 +718,7 @@ function buildTrendPullbackVerdict(
 
   if (
     (inEntryZone || nearEma50) &&
-    levels.rrNow >= MIN_RR &&
+    levels.rrNow >= minRrFor(marketType) &&
     !rsiLow &&
     !nearSupport
   ) {
@@ -709,13 +766,19 @@ function buildBreakoutRetestVerdict(
   }
 
   if (direction === "long" || (direction === null && marketType === "spot")) {
-    const entryZone: [number, number] = [
+    const rawZone: [number, number] = [
       indicators.resistance - indicators.atr * 0.5,
       indicators.resistance + indicators.atr * 0.3,
     ];
     const invalidation = indicators.resistance - indicators.atr * 1.2;
-    const idealEntry = (entryZone[0] + entryZone[1]) / 2;
+    const idealEntry = (rawZone[0] + rawZone[1]) / 2;
     const levels = buildLongLevels(currentPrice, idealEntry, invalidation);
+    const entryZone = clampEntryZoneToMinRr(
+      rawZone,
+      levels,
+      "long",
+      minRrFor(marketType),
+    );
     const inRetest =
       currentPrice >= entryZone[0] && currentPrice <= entryZone[1];
     const volumeOk = indicators.volumeStatus !== "low";
@@ -734,7 +797,7 @@ function buildBreakoutRetestVerdict(
       };
     }
 
-    if (inRetest && levels.rrNow >= MIN_RR && volumeOk) {
+    if (inRetest && levels.rrNow >= minRrFor(marketType) && volumeOk) {
       return {
         verdict: "enter",
         verdictLabel: "LONG",
@@ -763,13 +826,19 @@ function buildBreakoutRetestVerdict(
     };
   }
 
-  const entryZone: [number, number] = [
+  const rawZone: [number, number] = [
     indicators.support - indicators.atr * 0.3,
     indicators.support + indicators.atr * 0.5,
   ];
   const invalidation = indicators.support + indicators.atr * 1.2;
-  const idealEntry = (entryZone[0] + entryZone[1]) / 2;
+  const idealEntry = (rawZone[0] + rawZone[1]) / 2;
   const levels = buildShortLevels(currentPrice, idealEntry, invalidation);
+  const entryZone = clampEntryZoneToMinRr(
+    rawZone,
+    levels,
+    "short",
+    minRrFor(marketType),
+  );
   const inRetest = currentPrice >= entryZone[0] && currentPrice <= entryZone[1];
 
   if (currentPrice > invalidation) {
@@ -786,7 +855,7 @@ function buildBreakoutRetestVerdict(
     };
   }
 
-  if (inRetest && levels.rrNow >= MIN_RR) {
+  if (inRetest && levels.rrNow >= minRrFor(marketType)) {
     return {
       verdict: "enter",
       verdictLabel: "SHORT",
@@ -824,13 +893,19 @@ function buildEmaCrossoverVerdict(
   const { currentPrice, indicators, marketType } = input;
 
   if (cross === "bearish" && marketType === "futures") {
-    const entryZone: [number, number] = [
+    const rawZone: [number, number] = [
       indicators.ema50 - indicators.atr * 0.3,
       indicators.ema50 + indicators.atr * 0.2,
     ];
     const invalidation = indicators.ema50 + indicators.atr * 1.5;
-    const idealEntry = (entryZone[0] + entryZone[1]) / 2;
+    const idealEntry = (rawZone[0] + rawZone[1]) / 2;
     const levels = buildShortLevels(currentPrice, idealEntry, invalidation);
+    const entryZone = clampEntryZoneToMinRr(
+      rawZone,
+      levels,
+      "short",
+      minRrFor(marketType),
+    );
     const inPullback =
       currentPrice >= entryZone[0] && currentPrice <= entryZone[1];
     const belowEmas =
@@ -850,7 +925,7 @@ function buildEmaCrossoverVerdict(
       };
     }
 
-    if (inPullback && belowEmas && levels.rrNow >= MIN_RR) {
+    if (inPullback && belowEmas && levels.rrNow >= minRrFor(marketType)) {
       return {
         verdict: "enter",
         verdictLabel: "SHORT",
@@ -877,13 +952,19 @@ function buildEmaCrossoverVerdict(
     };
   }
 
-  const entryZone: [number, number] = [
+  const rawZone: [number, number] = [
     indicators.ema50 - indicators.atr * 0.2,
     indicators.ema50 + indicators.atr * 0.3,
   ];
   const invalidation = indicators.ema50 - indicators.atr * 1.5;
-  const idealEntry = (entryZone[0] + entryZone[1]) / 2;
+  const idealEntry = (rawZone[0] + rawZone[1]) / 2;
   const levels = buildLongLevels(currentPrice, idealEntry, invalidation);
+  const entryZone = clampEntryZoneToMinRr(
+    rawZone,
+    levels,
+    "long",
+    minRrFor(marketType),
+  );
   const inPullback =
     currentPrice >= entryZone[0] && currentPrice <= entryZone[1];
   const aboveEmas =
@@ -893,7 +974,9 @@ function buildEmaCrossoverVerdict(
     return buildTrendPullbackVerdict(input, strategy);
   }
 
-  if (currentPrice < invalidation) {
+  // Only a confirmed golden cross can be invalidated; without a cross there is
+  // no thesis to void, so the setup stays in "wait".
+  if (cross === "bullish" && currentPrice < invalidation) {
     return {
       verdict: "avoid",
       verdictLabel: "KIRISH XATO",
@@ -907,7 +990,12 @@ function buildEmaCrossoverVerdict(
     };
   }
 
-  if (cross === "bullish" && inPullback && aboveEmas && levels.rrNow >= MIN_RR) {
+  if (
+    cross === "bullish" &&
+    inPullback &&
+    aboveEmas &&
+    levels.rrNow >= minRrFor(marketType)
+  ) {
     return {
       verdict: "enter",
       verdictLabel: "LONG",
@@ -945,13 +1033,19 @@ function buildRsiDivergenceVerdict(
   const { currentPrice, indicators, marketType } = input;
 
   if (divergence === "bearish" && marketType === "futures") {
-    const entryZone = computeShortEntryZone(
+    const rawZone = computeShortEntryZone(
       indicators.resistance,
       indicators.atr,
     );
     const invalidation = indicators.resistance + indicators.atr * 0.75;
-    const idealEntry = (entryZone[0] + entryZone[1]) / 2;
+    const idealEntry = (rawZone[0] + rawZone[1]) / 2;
     const levels = buildShortLevels(currentPrice, idealEntry, invalidation);
+    const entryZone = clampEntryZoneToMinRr(
+      rawZone,
+      levels,
+      "short",
+      minRrDivergence(marketType),
+    );
     const inZone = currentPrice >= entryZone[0] && currentPrice <= entryZone[1];
 
     if (currentPrice > invalidation) {
@@ -968,7 +1062,7 @@ function buildRsiDivergenceVerdict(
       };
     }
 
-    if (inZone && levels.rrNow >= MIN_RR_DIVERGENCE) {
+    if (inZone && levels.rrNow >= minRrDivergence(marketType)) {
       return {
         verdict: "enter",
         verdictLabel: "SHORT",
@@ -995,10 +1089,16 @@ function buildRsiDivergenceVerdict(
     };
   }
 
-  const entryZone = computeLongEntryZone(indicators.support, indicators.atr);
+  const rawZone = computeLongEntryZone(indicators.support, indicators.atr);
   const invalidation = indicators.support - indicators.atr * 0.75;
-  const idealEntry = (entryZone[0] + entryZone[1]) / 2;
+  const idealEntry = (rawZone[0] + rawZone[1]) / 2;
   const levels = buildLongLevels(currentPrice, idealEntry, invalidation);
+  const entryZone = clampEntryZoneToMinRr(
+    rawZone,
+    levels,
+    "long",
+    minRrDivergence(marketType),
+  );
   const inZone = currentPrice >= entryZone[0] && currentPrice <= entryZone[1];
 
   if (marketType === "spot" && input.trend === "bearish") {
@@ -1019,7 +1119,11 @@ function buildRsiDivergenceVerdict(
     };
   }
 
-  if (divergence === "bullish" && inZone && levels.rrNow >= MIN_RR_DIVERGENCE) {
+  if (
+    divergence === "bullish" &&
+    inZone &&
+    levels.rrNow >= minRrDivergence(marketType)
+  ) {
     return {
       verdict: "enter",
       verdictLabel: "LONG",
@@ -1050,6 +1154,7 @@ function buildRsiDivergenceVerdict(
 
 export function buildStrategyVerdict(input: StrategyInput): VerdictResult {
   const strategy = detectStrategy(input);
+  const pattern = detectCandlePattern(input.candles);
 
   let result: VerdictResult;
 
@@ -1068,8 +1173,27 @@ export function buildStrategyVerdict(input: StrategyInput): VerdictResult {
       break;
   }
 
-  const confidence = finalizeConfidence(strategy.confidence, input, result);
-  result.strategy = { ...result.strategy, confidence };
+  result.pattern = pattern;
+
+  const patternItem: StrategyChecklistItem = {
+    label: "Sham tasdiqlash",
+    passed: patternMatchesSide(pattern, result.side),
+    detail: pattern
+      ? `${pattern.label}${pattern.volumeConfirmed ? " · volume tasdiqladi" : ""}`
+      : "Tasdiqlovchi sham formatsiyasi yo'q",
+  };
+
+  const confidence = finalizeConfidence(
+    strategy.confidence,
+    input,
+    result,
+    pattern,
+  );
+  result.strategy = {
+    ...result.strategy,
+    confidence,
+    checklist: [...result.strategy.checklist, patternItem],
+  };
 
   return result;
 }

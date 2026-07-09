@@ -18,7 +18,12 @@ import {
   type StrategyDetection,
   type VerdictResult,
 } from "./strategy.service.js";
-import type { MarketType, Trend, VolumeStatus } from "../types/index.js";
+import type {
+  AnalysisRisk,
+  MarketType,
+  Trend,
+  VolumeStatus,
+} from "../types/index.js";
 
 const KLINE_LIMIT = 300;
 
@@ -47,13 +52,7 @@ export interface TechnicalAnalysis {
     resistance: number;
     volumeStatus: VolumeStatus;
   };
-  risk: {
-    stopLoss: number;
-    takeProfit: number;
-    positionSize: number;
-    riskRewardRatio: number;
-    warning?: string;
-  };
+  risk: AnalysisRisk & { warning?: string };
   strategy: StrategyDetection;
   verdict: VerdictResult;
 }
@@ -229,6 +228,7 @@ export async function buildTechnicalAnalysis(
     stopLoss: verdict.stopLoss,
     capital,
     riskPercent,
+    marketType,
   });
 
   return {
@@ -242,7 +242,10 @@ export async function buildTechnicalAnalysis(
       stopLoss: verdict.stopLoss,
       takeProfit: verdict.takeProfit,
       positionSize: sizing.positionSize,
+      riskAmount: sizing.riskAmount,
+      notional: sizing.notional,
       riskRewardRatio: verdict.rrIdeal,
+      futures: sizing.futures,
       warning: sizing.warning,
     },
     strategy: verdict.strategy,

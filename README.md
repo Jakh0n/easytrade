@@ -35,62 +35,54 @@ ogohlantirishlar va grounded AI chat.
 
 ## Texnologiyalar
 
-- **Backend** — Node.js, Express 5, TypeScript (strict), Mongoose, zod, JWT,
-  bcryptjs, node-cron, OpenAI SDK.
-- **Frontend** — Next.js 16 (App Router), React 19, TypeScript, Tailwind v4,
-  shadcn/base-ui, TanStack Query, Zustand, next-themes, lightweight-charts,
-  recharts, sonner.
+- **Full-stack** — Next.js 16 (App Router + Route Handlers), React 19, TypeScript
+  (strict), Mongoose, zod, JWT, bcryptjs, node-cron, OpenAI SDK.
+- **UI** — Tailwind v4, shadcn/base-ui, TanStack Query, Zustand, next-themes,
+  lightweight-charts, recharts, sonner.
 
 ## Arxitektura
 
 ```mermaid
 flowchart TD
-  subgraph FE [Next.js Frontend]
-    Shell[App shell + sidebar]
+  subgraph App [Next.js Full-Stack]
+    UI[App shell + sidebar]
+    API[Route Handlers /api/*]
+    Cron[node-cron schedulers]
     Query[TanStack Query]
     Store[Zustand auth/theme]
-    Shell --> Dashboard & Screener & Analyze & Watchlist & Journal & Alerts & Settings
+    UI --> Dashboard & Screener & Analyze & Watchlist & Journal & Alerts & Settings
+    Query -->|REST + Bearer JWT| API
+    Store --> Query
+    Cron --> API
   end
-  subgraph BE [Express + TS]
-    Auth[auth JWT]
-    AnalyzeC[analyze + MTF]
-    ScreenerC[screener]
-    Backtest[backtest]
-    WL[watchlist]
-    Jrnl[journal]
-    AlertC[alerts + cron]
-    Chat[AI chat SSE]
-  end
-  Query -->|REST + Bearer JWT| BE
-  Store --> Query
-  BE --> Mongo[(MongoDB)]
-  AnalyzeC --> OpenAI
-  Chat --> OpenAI
-  FE -->|WebSocket jonli narx| Binance
-  BE -->|klines| Binance
+  API --> Mongo[(MongoDB)]
+  API --> OpenAI
+  UI -->|WebSocket jonli narx| Binance
+  API -->|klines| Binance
 ```
 
-### Backend tuzilmasi
+### Server tuzilmasi (`frontend/lib/server/`)
 
 ```
-backend/src/
+lib/server/
   config/       env, db, scheduler (cron)
-  middleware/   auth, validate (zod), error
+  http/         route adapter, error handling, SSE
   models/       User, Watchlist, Trade, Alert, BacktestResult
   services/     analysis, strategy, patterns, indicators, risk, mtf, backtest,
                 screener, binance, openai, auth, watchlist, journal, alert
-  controllers/  har bir resurs uchun ingichka handlerlar
-  routes/       Express routerlar (/api/...)
   validators/   zod sxemalari
-  utils/        AppError, asyncHandler, token
+  utils/        AppError, token
   __tests__/    Jest testlari
+app/api/        Next.js Route Handlers (har bir endpoint)
+instrumentation.ts   MongoDB ulanish + cron ishga tushirish
 ```
 
 ### Frontend tuzilmasi
 
 ```
 frontend/
-  app/                 layout, providers, login/register, (app)/* himoyalangan sahifalar
+  app/                 layout, providers, login/register, (app)/* himoyalangan sahifalar,
+                       api/* route handlerlar, health
   components/          layout, auth, analyze, screener, watchlist, journal, alerts,
                        dashboard, settings, common, ui (shadcn)
   hooks/               React Query hooklari (market, watchlist, journal, alerts)
@@ -102,62 +94,54 @@ frontend/
 
 ## O'rnatish
 
-### 1. Backend
-
-```bash
-cd backend
-npm install
-cp .env.example .env   # qiymatlarni to'ldiring (MONGODB_URI, JWT_SECRET, ...)
-npm run dev            # http://localhost:4000
-```
-
-Muhit o'zgaruvchilari (`.env`):
-
-| O'zgaruvchi      | Tavsif                              | Standart                              |
-| ---------------- | ----------------------------------- | ------------------------------------- |
-| `PORT`           | Server porti                        | `4000`                                |
-| `MONGODB_URI`    | MongoDB ulanish satri               | `mongodb://127.0.0.1:27017/easytrade` |
-| `JWT_SECRET`     | JWT imzo kaliti                     | (majburiy o'zgartiring)               |
-| `JWT_EXPIRES_IN` | Token amal qilish muddati           | `7d`                                  |
-| `OPENAI_API_KEY` | OpenAI kaliti (ixtiyoriy)           | —                                     |
-| `OPENAI_MODEL`   | OpenAI modeli                       | `gpt-4o`                              |
-| `CORS_ORIGIN`    | Ruxsat etilgan origin(lar) yoki `*` | `*`                                   |
-
-### 2. Frontend
-
 ```bash
 cd frontend
 npm install
-# ixtiyoriy: echo "NEXT_PUBLIC_API_URL=http://localhost:4000" > .env.local
-npm run dev            # http://localhost:3000
+cp .env.example .env.local   # qiymatlarni to'ldiring (MONGODB_URI, JWT_SECRET, ...)
+npm run dev                  # http://localhost:3000
 ```
+
+Muhit o'zgaruvchilari (`.env.local`):
+
+| O'zgaruvchi      | Tavsif                              | Standart                                  |
+| ---------------- | ----------------------------------- | ----------------------------------------- |
+| `MONGODB_URI`    | MongoDB ulanish satri               | `mongodb://127.0.0.1:27017/easytrade`     |
+| `JWT_SECRET`     | JWT imzo kaliti                     | (majburiy o'zgartiring)                   |
+| `JWT_EXPIRES_IN` | Token amal qilish muddati           | `7d`                                      |
+| `OPENAI_API_KEY` | OpenAI kaliti (ixtiyoriy)           | —                                         |
+| `OPENAI_MODEL`   | OpenAI modeli                       | `gpt-4o`                                  |
+| `APP_URL`        | Public URL (Render keep-alive ping) | Render'da `RENDER_EXTERNAL_URL` avtomatik |
+
+Render free tier uchun server **har 14 daqiqada** o'z `GET /health` endpointiga ping yuboradi (`200 OK`). Render'da qo'shimcha sozlash shart emas — `RENDER_EXTERNAL_URL` avtomatik ishlatiladi.
+
+**Health check:** `GET /health` → `200 OK`
 
 ## Skriptlar
 
-| Buyruq          | Joy      | Vazifa             |
-| --------------- | -------- | ------------------ |
-| `npm run dev`   | ikkalasi | Development server |
-| `npm run build` | ikkalasi | Production build   |
-| `npm start`     | ikkalasi | Production server  |
-| `npm test`      | ikkalasi | Jest testlari      |
+| Buyruq          | Vazifa             |
+| --------------- | ------------------ |
+| `npm run dev`   | Development server |
+| `npm run build` | Production build   |
+| `npm start`     | Production server  |
+| `npm test`      | Jest testlari      |
 
 ## API (asosiy)
 
-| Metod                 | Endpoint             | Auth | Tavsif                   |
-| --------------------- | -------------------- | ---- | ------------------------ |
-| POST                  | `/api/auth/register` | —    | Ro'yxatdan o'tish        |
-| POST                  | `/api/auth/login`    | —    | Kirish                   |
-| GET                   | `/api/auth/me`       | ✓    | Profil                   |
-| PATCH                 | `/api/auth/settings` | ✓    | Sozlamalarni yangilash   |
-| POST                  | `/api/analyze`       | —    | To'liq signal + AI izoh  |
-| POST                  | `/api/invest`        | —    | Uzoq muddat DCA tahlili  |
-| GET                   | `/api/invest/screener` | —  | Uzoq muddat imkoniyatlari |
-| GET                   | `/api/screener`      | —    | Bozor skaneri            |
-| GET                   | `/api/backtest`      | —    | Backtest natijalari      |
-| GET/POST/DELETE       | `/api/watchlist`     | ✓    | Watchlist CRUD           |
-| GET/POST/PATCH/DELETE | `/api/journal`       | ✓    | Savdo jurnali + `/stats` |
-| GET/POST/DELETE       | `/api/alerts`        | ✓    | Ogohlantirishlar CRUD    |
-| POST                  | `/api/chat`          | ✓    | Streaming AI chat (SSE)  |
+| Metod                 | Endpoint               | Auth | Tavsif                    |
+| --------------------- | ---------------------- | ---- | ------------------------- |
+| POST                  | `/api/auth/register`   | —    | Ro'yxatdan o'tish         |
+| POST                  | `/api/auth/login`      | —    | Kirish                    |
+| GET                   | `/api/auth/me`         | ✓    | Profil                    |
+| PATCH                 | `/api/auth/settings`   | ✓    | Sozlamalarni yangilash    |
+| POST                  | `/api/analyze`         | —    | To'liq signal + AI izoh   |
+| POST                  | `/api/invest`          | —    | Uzoq muddat DCA tahlili   |
+| GET                   | `/api/invest/screener` | —    | Uzoq muddat imkoniyatlari |
+| GET                   | `/api/screener`        | —    | Bozor skaneri             |
+| GET                   | `/api/backtest`        | —    | Backtest natijalari       |
+| GET/POST/DELETE       | `/api/watchlist`       | ✓    | Watchlist CRUD            |
+| GET/POST/PATCH/DELETE | `/api/journal`         | ✓    | Savdo jurnali + `/stats`  |
+| GET/POST/DELETE       | `/api/alerts`          | ✓    | Ogohlantirishlar CRUD     |
+| POST                  | `/api/chat`            | ✓    | Streaming AI chat (SSE)   |
 
 ## Xavfsizlik eslatmasi
 
@@ -166,11 +150,10 @@ Atlas paroli va OpenAI kalitini muntazam almashtirib turing.
 
 ## Testlar
 
-- Backend: signal indikatorlari, sham formatsiyalari, pozitsiya hajmi/leverage,
+- Server: signal indikatorlari, sham formatsiyalari, pozitsiya hajmi/leverage,
   MTF confluence, backtest statistikasi, JWT token.
 - Frontend: format yordamchilari, StatCard (RTL).
 
 ```bash
-cd backend && npm test
 cd frontend && npm test
 ```

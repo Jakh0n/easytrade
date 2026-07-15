@@ -1,7 +1,4 @@
-import {
-  createRouteHandler,
-  json,
-} from "@/lib/server/http/route";
+import { createRouteHandler, json } from "@/lib/server/http/route";
 import { runInvestScreener } from "@/lib/server/services/invest-screener.service";
 import {
   investScreenerQuerySchema,

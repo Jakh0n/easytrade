@@ -1,7 +1,4 @@
-import {
-  createRouteHandler,
-  json,
-} from "@/lib/server/http/route";
+import { createRouteHandler, json } from "@/lib/server/http/route";
 import { buildInvestAnalysis } from "@/lib/server/services/invest.service";
 import {
   investBodySchema,

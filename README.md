@@ -120,12 +120,12 @@ Render free tier uchun server **har 14 daqiqada** o'z `GET /health` endpointiga 
 
 Vercel → **Project Settings → Environment Variables** da quyidagilar bo'lishi kerak:
 
-| O'zgaruvchi      | Majburiy |
-| ---------------- | -------- |
-| `MONGODB_URI`    | ✓        |
-| `JWT_SECRET`     | ✓        |
-| `JWT_EXPIRES_IN` | ✓        |
-| `OPENAI_API_KEY` | ixtiyoriy |
+| O'zgaruvchi      | Majburiy                                  |
+| ---------------- | ----------------------------------------- |
+| `MONGODB_URI`    | ✓                                         |
+| `JWT_SECRET`     | ✓                                         |
+| `JWT_EXPIRES_IN` | ✓                                         |
+| `OPENAI_API_KEY` | ixtiyoriy                                 |
 | `APP_URL`        | ixtiyoriy (`https://your-app.vercel.app`) |
 
 **O'chiring:** `NEXT_PUBLIC_API_URL` — API endi shu Next.js app ichida, alohida Render backend kerak emas.

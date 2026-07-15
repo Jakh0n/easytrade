@@ -1,7 +1,4 @@
-import {
-  createRouteHandler,
-  createSSEStream,
-} from "@/lib/server/http/route";
+import { createRouteHandler, createSSEStream } from "@/lib/server/http/route";
 import { buildTechnicalAnalysis } from "@/lib/server/services/analysis.service";
 import {
   isOpenAiConfigured,

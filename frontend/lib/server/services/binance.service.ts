@@ -44,21 +44,30 @@ function handleBinanceError(error: unknown): never {
     }
 
     if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT") {
-      throw new Error("Binance API ga ulanish vaqti tugadi");
+      throw new AppError("Binance API ga ulanish vaqti tugadi", 503);
     }
 
     if (!error.response) {
-      throw new Error(
+      throw new AppError(
         "Binance API ga ulanib bo'lmadi. Tarmoq xatosini tekshiring",
+        503,
       );
     }
 
-    throw new Error(
+    if (status === 451) {
+      throw new AppError(
+        "Binance API mintaqangizda cheklangan. Server regionini sin1/hnd1 ga o'rnating.",
+        503,
+      );
+    }
+
+    throw new AppError(
       `Binance API xatosi: ${error.response.status} ${error.response.statusText}`,
+      502,
     );
   }
 
-  throw new Error("Kutilmagan xato yuz berdi");
+  throw new AppError("Kutilmagan xato yuz berdi", 500);
 }
 
 /**

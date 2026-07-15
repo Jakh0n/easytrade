@@ -1,7 +1,4 @@
-import {
-  createRouteHandler,
-  json,
-} from "@/lib/server/http/route";
+import { createRouteHandler, json } from "@/lib/server/http/route";
 import { buildTechnicalAnalysis } from "@/lib/server/services/analysis.service";
 import {
   analyzeBodySchema,
